@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🎯 Inbox Assassin
 
 > Clean inbox. Zero mercy.
@@ -123,3 +124,7 @@ inbox-assassin/
 ---
 
 *A Goochey Group tool · Built with Claude*
+=======
+# inbox-assassin
+Email Cleanup Utility
+>>>>>>> 5949fdcbb59afa0ba03fbd2955e0273ff995aa37
