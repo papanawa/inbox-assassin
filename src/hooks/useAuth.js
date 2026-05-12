@@ -74,14 +74,16 @@ export function useAuth() {
     await supabase.auth.signOut()
   }, [])
 
-  // Get the stored Gmail access token for API calls
+  // Get Gmail access token — session first, DB fallback
   const getGmailToken = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.provider_token) return session.provider_token
     if (!user) return null
     const { data } = await supabase
       .from('oauth_tokens')
-      .select('access_token, token_expiry')
+      .select('access_token')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
     return data?.access_token ?? null
   }, [user])
 
