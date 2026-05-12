@@ -78,7 +78,7 @@ export function buildQuery(rule) {
       if (rule.config.match === 'all') {
         return rule.config.keywords.join(' ')
       }
-      return rule.config.keywords.map(k => `"${k}"`).join(' OR ')
+      return rule.config.keywords.join(' OR')
     case 'label':
       if (!rule.config.label) return ''
       return `label:${rule.config.label}`
