@@ -9,22 +9,16 @@ export default {
         mono: ['DM Mono', 'monospace'],
       },
       colors: {
-        assassin: {
-          red: '#B91C1C',
-          'red-light': '#FEE2E2',
-          'red-hover': '#991B1B',
-        },
-        surface: {
-          DEFAULT: '#FFFFFF',
-          muted: '#F8F8F6',
-          border: '#E5E5E5',
-          hover: '#F3F3F1',
-        },
-        ink: {
-          DEFAULT: '#0D0D0D',
-          muted: '#737373',
-          faint: '#A8A8A8',
-        },
+        'assassin-red': '#B91C1C',
+        'assassin-red-light': '#FEE2E2',
+        'assassin-red-hover': '#991B1B',
+        'surface': '#FFFFFF',
+        'surface-muted': '#F8F8F6',
+        'surface-border': '#E5E5E5',
+        'surface-hover': '#F3F3F1',
+        'ink': '#0D0D0D',
+        'ink-muted': '#737373',
+        'ink-faint': '#A8A8A8',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',

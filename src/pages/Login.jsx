@@ -33,14 +33,14 @@ export default function Login() {
 
       <div className="relative w-full max-w-sm animate-slide-up">
         {/* Card */}
-        <div className="bg-surface-DEFAULT border border-surface-border rounded-2xl p-8 shadow-sm">
+        <div className="bg-surface border border-surface-border rounded-2xl p-8 shadow-sm">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-ink-DEFAULT rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-ink rounded-xl flex items-center justify-center">
               <Crosshair size={20} className="text-assassin-red" strokeWidth={2.5} />
             </div>
             <div>
-              <div className="font-display font-700 text-base text-ink-DEFAULT leading-tight tracking-tight">
+              <div className="font-display font-700 text-base text-ink leading-tight tracking-tight">
                 INBOX
               </div>
               <div className="font-display font-800 text-base text-assassin-red leading-tight tracking-tight">
@@ -51,7 +51,7 @@ export default function Login() {
 
           {/* Headline */}
           <div className="mb-6">
-            <h1 className="font-display font-700 text-2xl text-ink-DEFAULT mb-2 leading-tight">
+            <h1 className="font-display font-700 text-2xl text-ink mb-2 leading-tight">
               Clean inbox.<br />Zero mercy.
             </h1>
             <p className="font-body text-sm text-ink-muted leading-relaxed">
@@ -62,7 +62,7 @@ export default function Login() {
           {/* Sign in button */}
           <button
             onClick={handleSignIn}
-            className="w-full flex items-center justify-center gap-3 bg-ink-DEFAULT text-white 
+            className="w-full flex items-center justify-center gap-3 bg-ink text-white 
                        font-body font-medium text-sm py-3 px-4 rounded-xl
                        hover:bg-ink-muted transition-all duration-200 cursor-crosshair"
           >

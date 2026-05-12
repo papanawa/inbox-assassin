@@ -4,7 +4,7 @@ export default function AuditLog() {
   return (
     <div className="max-w-4xl animate-slide-up">
       <div className="mb-8">
-        <h2 className="font-display font-700 text-3xl text-ink-DEFAULT mb-1">Audit Log</h2>
+        <h2 className="font-display font-700 text-3xl text-ink mb-1">Audit Log</h2>
         <p className="font-body text-sm text-ink-muted">
           A permanent record of everything eliminated.
         </p>
@@ -14,7 +14,7 @@ export default function AuditLog() {
         <div className="w-14 h-14 bg-surface-muted rounded-2xl flex items-center justify-center mb-4">
           <ScrollText size={24} className="text-ink-faint" strokeWidth={1.5} />
         </div>
-        <h3 className="font-display font-600 text-lg text-ink-DEFAULT mb-2">
+        <h3 className="font-display font-600 text-lg text-ink mb-2">
           No runs logged yet
         </h3>
         <p className="font-body text-sm text-ink-muted max-w-xs leading-relaxed">

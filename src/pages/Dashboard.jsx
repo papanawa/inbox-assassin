@@ -44,7 +44,7 @@ export default function Dashboard() {
     <div className="max-w-4xl animate-slide-up">
       {/* Welcome */}
       <div className="mb-8">
-        <h2 className="font-display font-700 text-3xl text-ink-DEFAULT mb-1">
+        <h2 className="font-display font-700 text-3xl text-ink mb-1">
           Welcome back, {firstName}.
         </h2>
         <p className="font-body text-sm text-ink-muted">
@@ -94,10 +94,10 @@ export default function Dashboard() {
       {/* Recent activity */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display font-600 text-base text-ink-DEFAULT">Recent Activity</h3>
+          <h3 className="font-display font-600 text-base text-ink">Recent Activity</h3>
           <Link
             to="/audit"
-            className="text-xs font-body text-ink-muted hover:text-ink-DEFAULT 
+            className="text-xs font-body text-ink-muted hover:text-ink 
                        flex items-center gap-1 transition-colors"
           >
             View all <ArrowRight size={12} />
@@ -134,12 +134,12 @@ function StatCard({ label, value, icon, color }) {
       <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
         color === 'red'
           ? 'bg-assassin-red-light text-assassin-red'
-          : 'bg-surface-muted text-ink-DEFAULT'
+          : 'bg-surface-muted text-ink'
       }`}>
         {icon}
       </div>
       <div>
-        <div className="font-display font-700 text-2xl text-ink-DEFAULT">{value}</div>
+        <div className="font-display font-700 text-2xl text-ink">{value}</div>
         <div className="text-xs font-body text-ink-muted">{label}</div>
       </div>
     </div>
@@ -151,18 +151,18 @@ function ActionCard({ to, icon, title, description, primary }) {
     <Link
       to={to}
       className={`card group hover:border-ink-muted transition-all duration-200 no-underline ${
-        primary ? 'border-ink-DEFAULT' : ''
+        primary ? 'border-ink' : ''
       }`}
     >
       <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${
-        primary ? 'bg-ink-DEFAULT text-white' : 'bg-surface-muted text-ink-DEFAULT'
+        primary ? 'bg-ink text-white' : 'bg-surface-muted text-ink'
       }`}>
         {icon}
       </div>
-      <div className="font-display font-600 text-sm text-ink-DEFAULT mb-1">{title}</div>
+      <div className="font-display font-600 text-sm text-ink mb-1">{title}</div>
       <div className="text-xs font-body text-ink-muted leading-relaxed">{description}</div>
       <div className="flex items-center gap-1 mt-3 text-xs font-body text-ink-faint 
-                      group-hover:text-ink-DEFAULT transition-colors">
+                      group-hover:text-ink transition-colors">
         Go <ArrowRight size={11} />
       </div>
     </Link>
@@ -176,7 +176,7 @@ function LogRow({ log }) {
   return (
     <div className="py-3 flex items-center justify-between">
       <div>
-        <div className="text-sm font-body font-medium text-ink-DEFAULT">
+        <div className="text-sm font-body font-medium text-ink">
           {log.run_label ?? 'Manual Run'}
         </div>
         <div className="text-xs font-mono text-ink-faint">{date}</div>

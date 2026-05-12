@@ -8,7 +8,7 @@ export default function Rules() {
     <div className="max-w-4xl animate-slide-up">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="font-display font-700 text-3xl text-ink-DEFAULT mb-1">Rules</h2>
+          <h2 className="font-display font-700 text-3xl text-ink mb-1">Rules</h2>
           <p className="font-body text-sm text-ink-muted">
             Each rule defines a target. Stack them up before you run.
           </p>
@@ -28,7 +28,7 @@ export default function Rules() {
         <div className="w-14 h-14 bg-surface-muted rounded-2xl flex items-center justify-center mb-4">
           <ListChecks size={24} className="text-ink-faint" strokeWidth={1.5} />
         </div>
-        <h3 className="font-display font-600 text-lg text-ink-DEFAULT mb-2">
+        <h3 className="font-display font-600 text-lg text-ink mb-2">
           No rules yet
         </h3>
         <p className="font-body text-sm text-ink-muted max-w-xs leading-relaxed">

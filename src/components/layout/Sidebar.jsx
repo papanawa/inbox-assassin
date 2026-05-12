@@ -19,16 +19,16 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-60 min-h-screen bg-surface-DEFAULT border-r border-surface-border 
+    <aside className="w-60 min-h-screen bg-surface border-r border-surface-border 
                       flex flex-col shrink-0">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-surface-border">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-ink-DEFAULT rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-ink rounded-lg flex items-center justify-center">
             <Crosshair size={16} className="text-assassin-red" strokeWidth={2.5} />
           </div>
           <div>
-            <div className="font-display font-700 text-sm text-ink-DEFAULT leading-tight tracking-tight">
+            <div className="font-display font-700 text-sm text-ink leading-tight tracking-tight">
               INBOX
             </div>
             <div className="font-display font-800 text-sm text-assassin-red leading-tight tracking-tight">
@@ -71,7 +71,7 @@ export default function Sidebar() {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-body font-medium text-ink-DEFAULT truncate">
+            <div className="text-xs font-body font-medium text-ink truncate">
               {user?.user_metadata?.full_name ?? 'User'}
             </div>
             <div className="text-xs font-mono text-ink-faint truncate">
