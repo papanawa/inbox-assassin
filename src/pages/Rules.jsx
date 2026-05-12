@@ -28,15 +28,24 @@ export default function Rules() {
   }
 
   const handleSaveRule = async (ruleData) => {
+    const payload = {
+      name: ruleData.name,
+      rule_type: ruleData.rule_type,
+      config: ruleData.config ?? {},
+      action: ruleData.action ?? 'trash',
+      action_config: { label: ruleData.config?.action_label ?? '' },
+      is_active: true,
+    }
+
     if (editingRule) {
       await supabase
         .from('rules')
-        .update({ ...ruleData, updated_at: new Date().toISOString() })
+        .update({ ...payload, updated_at: new Date().toISOString() })
         .eq('id', editingRule.id)
     } else {
       await supabase
         .from('rules')
-        .insert({ ...ruleData, user_id: user.id })
+        .insert({ ...payload, user_id: user.id })
     }
     await fetchRules()
     setShowPanel(false)
