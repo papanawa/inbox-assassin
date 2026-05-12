@@ -119,3 +119,14 @@ export function formatBytes(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
+
+export function actionToEnglish(action) {
+  switch (action) {
+    case 'trash':              return 'Delete'
+    case 'move':               return 'Move to folder'
+    case 'mark_read':          return 'Mark as read'
+    case 'unsubscribe_delete': return 'Unsubscribe + Delete'
+    case 'create_and_move':    return 'Create folder + Move'
+    default:                   return action ?? 'Delete'
+  }
+}
