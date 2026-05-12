@@ -74,11 +74,13 @@ export function buildQuery(rule) {
     case 'age':
       return `older_than:${rule.config.older_than_days}d`
     case 'keyword':
+      if (!rule.config.keywords?.length) return ''
       if (rule.config.match === 'all') {
         return rule.config.keywords.join(' ')
       }
       return rule.config.keywords.map(k => `"${k}"`).join(' OR ')
     case 'label':
+      if (!rule.config.label) return ''
       return `label:${rule.config.label}`
     case 'newsletter':
       return 'list:* OR unsubscribe'
