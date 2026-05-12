@@ -18,13 +18,20 @@ export default function Rules() {
   }, [user])
 
   const fetchRules = async () => {
-    const { data } = await supabase
-      .from('rules')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-    setRules(data ?? [])
-    setLoading(false)
+    try {
+      const { data, error } = await supabase
+        .from('rules')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+      if (error) console.error('Rules fetch error:', error)
+      setRules(data ?? [])
+    } catch (err) {
+      console.error('Rules fetch failed:', err)
+      setRules([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSaveRule = async (ruleData) => {
