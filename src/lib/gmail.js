@@ -101,7 +101,7 @@ export function ruleToEnglish(rule) {
     case 'age':
       return `All emails older than ${rule.config.older_than_days} days`
     case 'keyword':
-      return `Emails containing: ${rule.config.keywords.join(', ')}`
+      return `Emails containing: ${rule.config.keywords?.join(', ') ?? '(no keywords yet)'}`
     case 'label':
       return `All emails labeled "${rule.config.label}"`
     case 'newsletter':
