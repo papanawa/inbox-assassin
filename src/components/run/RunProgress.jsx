@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Crosshair, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { buildQuery } from '../../lib/gmail'
 
-export default function RunProgress({ selectedRules, mode, batchSize, getGmailToken, onComplete }) {
+export default function RunProgress({ selectedRules, mode, batchSize, gmailToken, getGmailToken, onComplete }) {
   const [results, setResults] = useState(
     selectedRules.map(r => ({ rule: r, status: 'pending', succeeded: 0, failed: 0, total: 0 }))
   )
@@ -18,7 +18,7 @@ export default function RunProgress({ selectedRules, mode, batchSize, getGmailTo
   }
 
   const runAll = async () => {
-    const token = await getGmailToken()
+    const token = gmailToken ?? await getGmailToken()
     if (!token) return
 
     const finalResults = []

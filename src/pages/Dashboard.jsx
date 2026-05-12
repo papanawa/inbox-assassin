@@ -44,8 +44,14 @@ export default function Dashboard() {
     }
   }
 
-  const handleRunConfirm = (config) => {
-    setRunConfig(config)
+  const handleRunConfirm = async (config) => {
+    const token = await getGmailToken()
+    if (!token) {
+      alert('Gmail session expired. Please sign out and sign back in.')
+      setRunState(RUN_STATE.IDLE)
+      return
+    }
+    setRunConfig({ ...config, gmailToken: token })
     setRunState(RUN_STATE.RUNNING)
   }
 
@@ -167,6 +173,7 @@ export default function Dashboard() {
       {runState === RUN_STATE.RUNNING && runConfig && (
         <RunProgress
           selectedRules={runConfig.selectedRules}
+          gmailToken={runConfig.gmailToken}
           mode={runConfig.mode}
           batchSize={runConfig.batchSize}
           getGmailToken={getGmailToken}
