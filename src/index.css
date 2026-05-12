@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'DM Sans', sans-serif;
+    background-color: #F8F8F6;
+    color: #0D0D0D;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Syne', sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-ink-DEFAULT text-white font-body font-medium px-5 py-2.5 rounded-lg 
+           hover:bg-ink-muted transition-all duration-200 text-sm;
+  }
+
+  .btn-danger {
+    @apply bg-assassin-red text-white font-body font-medium px-5 py-2.5 rounded-lg 
+           hover:bg-assassin-red-hover transition-all duration-200 text-sm;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-ink-DEFAULT font-body font-medium px-5 py-2.5 rounded-lg 
+           hover:bg-surface-hover border border-surface-border transition-all duration-200 text-sm;
+  }
+
+  .card {
+    @apply bg-surface-DEFAULT border border-surface-border rounded-xl p-6;
+  }
+
+  .badge-red {
+    @apply bg-assassin-red-light text-assassin-red text-xs font-mono font-medium 
+           px-2 py-0.5 rounded-full;
+  }
+
+  .badge-gray {
+    @apply bg-surface-muted text-ink-muted text-xs font-mono font-medium 
+           px-2 py-0.5 rounded-full;
+  }
+
+  .input {
+    @apply w-full border border-surface-border rounded-lg px-3 py-2.5 text-sm 
+           font-body text-ink-DEFAULT bg-white placeholder-ink-faint
+           focus:outline-none focus:ring-2 focus:ring-ink-DEFAULT focus:border-transparent
+           transition-all duration-200;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-body font-medium
+           text-ink-muted hover:text-ink-DEFAULT hover:bg-surface-hover
+           transition-all duration-150 cursor-pointer;
+  }
+
+  .sidebar-link.active {
+    @apply bg-ink-DEFAULT text-white;
+  }
+}
+
+/* Crosshair cursor on danger elements */
+.cursor-crosshair {
+  cursor: crosshair;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F8F8F6;
+}
+::-webkit-scrollbar-thumb {
+  background: #E5E5E5;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A8A8;
+}
