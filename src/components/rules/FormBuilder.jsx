@@ -23,7 +23,7 @@ export default function FormBuilder({ getGmailToken, onRuleReady, initialRule })
   const [ruleType, setRuleType] = useState(initialRule?.rule_type ?? '')
   const [config, setConfig] = useState(initialRule?.config ?? {})
   const [action, setAction] = useState(initialRule?.action ?? 'trash')
-  const [actionLabel, setActionLabel] = useState(initialRule?.config?.action_label ?? '')
+  const [actionLabel, setActionLabel] = useState(initialRule?.action_config?.label ?? initialRule?.config?.action_label ?? '')
   const [name, setName] = useState(initialRule?.name ?? '')
   const [count, setCount] = useState(null)
   const [counting, setCounting] = useState(false)
@@ -238,7 +238,7 @@ export default function FormBuilder({ getGmailToken, onRuleReady, initialRule })
                 ? <><Loader2 size={11} className="animate-spin text-ink-faint" /> counting...</>
                 : count != null
                   ? <span className={count > 0 ? 'text-assassin-red font-medium' : 'text-ink-faint'}>
-                      ~{count.toLocaleString()} emails
+                      {count > 0 ? `~${count.toLocaleString()} emails` : '0 emails'}
                     </span>
                   : <span className="text-ink-faint">—</span>
               }
