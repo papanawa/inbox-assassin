@@ -3,15 +3,31 @@
 
 async function getOrCreateLabel(BASE, headers, rawLabelName) {
   const labelName = rawLabelName.trim().replace(/\s+/g, ' ')
-  // First try to find existing label
+  const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const normalizedTarget = normalize(labelName)
+
   const listRes = await fetch(`${BASE}/labels`, { headers })
   if (listRes.ok) {
     const { labels } = await listRes.json()
-    const existing = labels?.find(l => l.name.toLowerCase() === labelName.toLowerCase())
-    if (existing) return existing.id
+    const userLabels = labels?.filter(l => l.type === 'user') ?? []
+
+    // 1. Exact match (case-insensitive)
+    const exact = userLabels.find(l => l.name.toLowerCase() === labelName.toLowerCase())
+    if (exact) return exact.id
+
+    // 2. Normalized match (strips punctuation and spaces)
+    const fuzzy = userLabels.find(l => normalize(l.name) === normalizedTarget)
+    if (fuzzy) return fuzzy.id
+
+    // 3. Partial match (one contains the other — catches Finance vs Financial/Banking)
+    const partial = userLabels.find(l => {
+      const a = normalize(l.name)
+      return a.includes(normalizedTarget) || normalizedTarget.includes(a)
+    })
+    if (partial) return partial.id
   }
 
-  // Create the label
+  // No match — create new label
   const createRes = await fetch(`${BASE}/labels`, {
     method: 'POST',
     headers,
@@ -30,13 +46,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const {
-    accessToken,
-    query,
-    action = 'trash',
-    actionLabel,
-    pageToken = null,
-    maxResults = 500,
-    fullRun = false,
+    accessToken, query, action = 'trash', actionLabel,
+    pageToken = null, maxResults = 500, fullRun = false,
   } = req.body
 
   if (!accessToken) return res.status(401).json({ error: 'No access token' })
@@ -51,7 +62,7 @@ export default async function handler(req, res) {
   const maxPages = fullRun ? 100 : 1
 
   try {
-    // Step 1: If create_and_move, resolve the label ID upfront
+    // Resolve label ID upfront for move actions
     let resolvedLabelId = null
     if ((action === 'create_and_move' || action === 'move') && actionLabel) {
       resolvedLabelId = await getOrCreateLabel(BASE, headers, actionLabel)
@@ -60,7 +71,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Step 2: Fetch message IDs
+    // Fetch message IDs
     do {
       const params = new URLSearchParams({ q: query, maxResults: Math.min(maxResults, 500) })
       if (nextPageToken) params.set('pageToken', nextPageToken)
@@ -72,11 +83,9 @@ export default async function handler(req, res) {
       }
 
       const listData = await listRes.json()
-      const ids = (listData.messages ?? []).map(m => m.id)
-      allMessageIds.push(...ids)
+      allMessageIds.push(...(listData.messages ?? []).map(m => m.id))
       nextPageToken = listData.nextPageToken ?? null
       pages++
-
       if (!fullRun) break
     } while (nextPageToken && pages < maxPages)
 
@@ -84,7 +93,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ succeeded: 0, failed: 0, total: 0, nextPageToken: null })
     }
 
-    // Step 3: Process in chunks of 50
+    // Process in chunks of 50
     const CHUNK = 50
     let succeeded = 0
     let failed = 0
@@ -119,8 +128,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      succeeded,
-      failed,
+      succeeded, failed,
       total: allMessageIds.length,
       nextPageToken: fullRun ? null : nextPageToken,
     })

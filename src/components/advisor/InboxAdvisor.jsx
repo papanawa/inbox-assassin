@@ -45,10 +45,27 @@ export default function InboxAdvisor({ getGmailToken, onRulesCreated, onClose })
     setStage(STAGES.ANALYZING)
 
     try {
+      // Fetch existing Gmail labels to avoid duplicates
+      const token = await getGmailToken()
+      let existingLabels = []
+      if (token) {
+        try {
+          const labelRes = await fetch('/api/gmail/labels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken: token }),
+          })
+          if (labelRes.ok) {
+            const labelData = await labelRes.json()
+            existingLabels = labelData.labels ?? []
+          }
+        } catch { /* labels are optional */ }
+      }
+
       const r = await fetch('/api/advisor/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ senders: selectedSenders }),
+        body: JSON.stringify({ senders: selectedSenders, existingLabels }),
       })
       const data = await r.json()
       setProposals(data.proposals ?? [])
