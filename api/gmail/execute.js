@@ -1,6 +1,30 @@
 // POST /api/gmail/execute
 // Fetches message IDs matching a query and performs the action on them
 
+async function getOrCreateLabel(BASE, headers, labelName) {
+  // First try to find existing label
+  const listRes = await fetch(`${BASE}/labels`, { headers })
+  if (listRes.ok) {
+    const { labels } = await listRes.json()
+    const existing = labels?.find(l => l.name.toLowerCase() === labelName.toLowerCase())
+    if (existing) return existing.id
+  }
+
+  // Create the label
+  const createRes = await fetch(`${BASE}/labels`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      name: labelName,
+      labelListVisibility: 'labelShow',
+      messageListVisibility: 'show',
+    }),
+  })
+  if (!createRes.ok) return null
+  const label = await createRes.json()
+  return label.id ?? null
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -10,8 +34,8 @@ export default async function handler(req, res) {
     action = 'trash',
     actionLabel,
     pageToken = null,
-    maxResults = 500, // batch size
-    fullRun = false,  // if true, paginate through all pages
+    maxResults = 500,
+    fullRun = false,
   } = req.body
 
   if (!accessToken) return res.status(401).json({ error: 'No access token' })
@@ -23,10 +47,19 @@ export default async function handler(req, res) {
   let allMessageIds = []
   let nextPageToken = pageToken
   let pages = 0
-  const maxPages = fullRun ? 100 : 1 // full run paginates up to 100 pages (50k emails)
+  const maxPages = fullRun ? 100 : 1
 
   try {
-    // Fetch message IDs
+    // Step 1: If create_and_move, resolve the label ID upfront
+    let resolvedLabelId = null
+    if ((action === 'create_and_move' || action === 'move') && actionLabel) {
+      resolvedLabelId = await getOrCreateLabel(BASE, headers, actionLabel)
+      if (!resolvedLabelId) {
+        return res.status(400).json({ error: `Could not create label: ${actionLabel}` })
+      }
+    }
+
+    // Step 2: Fetch message IDs
     do {
       const params = new URLSearchParams({ q: query, maxResults: Math.min(maxResults, 500) })
       if (nextPageToken) params.set('pageToken', nextPageToken)
@@ -43,14 +76,14 @@ export default async function handler(req, res) {
       nextPageToken = listData.nextPageToken ?? null
       pages++
 
-      if (!fullRun) break // batch mode: one page only
+      if (!fullRun) break
     } while (nextPageToken && pages < maxPages)
 
     if (allMessageIds.length === 0) {
       return res.status(200).json({ succeeded: 0, failed: 0, total: 0, nextPageToken: null })
     }
 
-    // Process in chunks of 50
+    // Step 3: Process in chunks of 50
     const CHUNK = 50
     let succeeded = 0
     let failed = 0
@@ -58,41 +91,21 @@ export default async function handler(req, res) {
     for (let i = 0; i < allMessageIds.length; i += CHUNK) {
       const chunk = allMessageIds.slice(i, i + CHUNK)
       try {
-        let modifyRes
+        let body
 
-        if (action === 'trash') {
-          modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX', 'UNREAD'] }),
-          })
+        if (action === 'trash' || action === 'unsubscribe_delete') {
+          body = { ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX', 'UNREAD'] }
         } else if (action === 'mark_read') {
-          modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ ids: chunk, removeLabelIds: ['UNREAD'] }),
-          })
-        } else if (action === 'move' && actionLabel) {
-          modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ ids: chunk, addLabelIds: [actionLabel], removeLabelIds: ['INBOX'] }),
-          })
-        } else if (action === 'unsubscribe_delete') {
-          // For now: trash only (unsubscribe header parsing is Phase 6)
-          modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX'] }),
-          })
-        } else if (action === 'create_and_move' && actionLabel) {
-          modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ ids: chunk, addLabelIds: [actionLabel], removeLabelIds: ['INBOX'] }),
-          })
+          body = { ids: chunk, removeLabelIds: ['UNREAD'] }
+        } else if ((action === 'move' || action === 'create_and_move') && resolvedLabelId) {
+          body = { ids: chunk, addLabelIds: [resolvedLabelId], removeLabelIds: ['INBOX'] }
         } else {
-          // Default: trash
-          modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX'] }),
-          })
+          body = { ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX'] }
         }
+
+        const modifyRes = await fetch(`${BASE}/messages/batchModify`, {
+          method: 'POST', headers, body: JSON.stringify(body),
+        })
 
         if (modifyRes.ok || modifyRes.status === 204) {
           succeeded += chunk.length
@@ -108,7 +121,7 @@ export default async function handler(req, res) {
       succeeded,
       failed,
       total: allMessageIds.length,
-      nextPageToken: fullRun ? null : nextPageToken, // for batch mode: next page token
+      nextPageToken: fullRun ? null : nextPageToken,
     })
   } catch (err) {
     console.error('Execute error:', err)
