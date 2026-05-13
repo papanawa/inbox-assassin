@@ -69,6 +69,11 @@ export default function Rules() {
     setRules(prev => prev.map(r => r.id === ruleId ? { ...r, is_active: isActive } : r))
   }
 
+  const handleToggleAuto = async (ruleId, isAuto) => {
+    await supabase.from('rules').update({ is_auto: isAuto }).eq('id', ruleId)
+    setRules(prev => prev.map(r => r.id === ruleId ? { ...r, is_auto: isAuto } : r))
+  }
+
   const openNew = () => { setEditingRule(null); setShowPanel(true) }
   const openEdit = (rule) => { setEditingRule(rule); setShowPanel(true) }
 
@@ -104,7 +109,7 @@ export default function Rules() {
               <p className="text-xs font-mono text-ink-faint mb-3 uppercase tracking-widest">Active · {activeRules.length}</p>
               <div className="space-y-3">
                 {activeRules.map(rule => (
-                  <RuleCard key={rule.id} rule={rule} onEdit={openEdit} onDelete={handleDeleteRule} onToggle={handleToggleRule} />
+                  <RuleCard key={rule.id} rule={rule} onEdit={openEdit} onDelete={handleDeleteRule} onToggle={handleToggleRule} onToggleAuto={handleToggleAuto} />
                 ))}
               </div>
             </section>
@@ -114,7 +119,7 @@ export default function Rules() {
               <p className="text-xs font-mono text-ink-faint mb-3 mt-6 uppercase tracking-widest">Inactive · {inactiveRules.length}</p>
               <div className="space-y-3">
                 {inactiveRules.map(rule => (
-                  <RuleCard key={rule.id} rule={rule} onEdit={openEdit} onDelete={handleDeleteRule} onToggle={handleToggleRule} />
+                  <RuleCard key={rule.id} rule={rule} onEdit={openEdit} onDelete={handleDeleteRule} onToggle={handleToggleRule} onToggleAuto={handleToggleAuto} />
                 ))}
               </div>
             </section>

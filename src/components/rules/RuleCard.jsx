@@ -1,26 +1,18 @@
 import { useState } from 'react'
-import { Pencil, Trash2, ChevronDown, ChevronUp, Mail, Clock, Tag, Globe, Type, Newspaper } from 'lucide-react'
+import { Pencil, Trash2, Mail, Clock, Tag, Globe, Type, Newspaper, Zap } from 'lucide-react'
 import { ruleToEnglish, actionToEnglish } from '../../lib/gmail'
 
 const TYPE_ICONS = {
-  sender: Mail,
-  domain: Globe,
-  age: Clock,
-  keyword: Type,
-  label: Tag,
-  newsletter: Newspaper,
+  sender: Mail, domain: Globe, age: Clock,
+  keyword: Type, label: Tag, newsletter: Newspaper,
 }
 
 const ACTION_COLORS = {
-  trash: 'badge-red',
-  move: 'badge-gray',
-  mark_read: 'badge-gray',
-  unsubscribe_delete: 'badge-red',
-  create_and_move: 'badge-gray',
+  trash: 'badge-red', move: 'badge-gray', mark_read: 'badge-gray',
+  unsubscribe_delete: 'badge-red', create_and_move: 'badge-gray',
 }
 
-export default function RuleCard({ rule, onEdit, onDelete, onToggle }) {
-  const [expanded, setExpanded] = useState(false)
+export default function RuleCard({ rule, onEdit, onDelete, onToggle, onToggleAuto }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const Icon = TYPE_ICONS[rule.rule_type] ?? Mail
@@ -56,7 +48,7 @@ export default function RuleCard({ rule, onEdit, onDelete, onToggle }) {
               )}
             </div>
 
-            {/* Toggle */}
+            {/* Active toggle */}
             <button
               onClick={() => onToggle(rule.id, !rule.is_active)}
               className={`w-9 h-5 rounded-full flex items-center shrink-0 transition-colors duration-200 ${
@@ -69,26 +61,42 @@ export default function RuleCard({ rule, onEdit, onDelete, onToggle }) {
             </button>
           </div>
 
-          {/* Plain English description */}
           <p className="text-xs font-body text-ink-muted leading-relaxed">
             {rule.config?.description ?? ruleToEnglish(rule)}
           </p>
+
+          {/* Auto badge */}
+          {rule.is_auto && (
+            <div className="flex items-center gap-1 mt-1.5">
+              <Zap size={10} className="text-amber-500" strokeWidth={2.5} />
+              <span className="text-xs font-mono text-amber-500">Auto-run enabled</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Actions row */}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-surface-border">
-        <div className="flex items-center gap-1">
-          {rule.run_count > 0 && (
-            <span className="text-xs font-mono text-ink-faint">
-              Run {rule.run_count}× · Last: {rule.last_run_at
-                ? new Date(rule.last_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                : 'never'}
-            </span>
-          )}
-        </div>
+        {/* Auto toggle */}
+        <button
+          onClick={() => onToggleAuto(rule.id, !rule.is_auto)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-body
+                     transition-all ${rule.is_auto
+                       ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                       : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                     }`}
+          title={rule.is_auto ? 'Disable auto-run' : 'Enable auto-run'}
+        >
+          <Zap size={11} strokeWidth={2.5} />
+          {rule.is_auto ? 'Auto' : 'Manual'}
+        </button>
 
         <div className="flex items-center gap-1">
+          {rule.run_count > 0 && (
+            <span className="text-xs font-mono text-ink-faint mr-2">
+              {rule.run_count}× run
+            </span>
+          )}
           <button
             onClick={() => onEdit(rule)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-body

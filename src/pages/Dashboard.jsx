@@ -7,6 +7,7 @@ import RunGate from '../components/run/RunGate'
 import RunProgress from '../components/run/RunProgress'
 import RunSummary from '../components/run/RunSummary'
 import InboxAdvisor from '../components/advisor/InboxAdvisor'
+import { useNotifications } from '../hooks/useNotifications'
 
 const RUN_STATE = { IDLE: 'idle', GATE: 'gate', RUNNING: 'running', SUMMARY: 'summary' }
 
@@ -20,6 +21,8 @@ export default function Dashboard() {
   const [runConfig, setRunConfig] = useState(null)
   const [runResults, setRunResults] = useState(null)
   const [showAdvisor, setShowAdvisor] = useState(false)
+  const { notifications, markRead } = useNotifications(user)
+  const unreadAutoRuns = notifications.filter(n => !n.read)
 
 
   useEffect(() => {
@@ -117,6 +120,25 @@ export default function Dashboard() {
           </button>
         )}
       </div>
+
+      {/* Auto-run notification banners */}
+      {unreadAutoRuns.map(notif => (
+        <div key={notif.id}
+          className="mb-4 flex items-center justify-between gap-4 bg-amber-50 border border-amber-200
+                     rounded-xl px-4 py-3 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-amber-500 text-base">⚡</span>
+            <div>
+              <span className="text-xs font-body font-medium text-amber-800">{notif.title} · </span>
+              <span className="text-xs font-body text-amber-700">{notif.message}</span>
+            </div>
+          </div>
+          <button onClick={() => markRead(notif.id)}
+            className="text-xs font-body text-amber-600 hover:text-amber-800 shrink-0 transition-colors">
+            Dismiss
+          </button>
+        </div>
+      ))}
 
       {/* AI Advisor hero card — primary entry point */}
       <div className="card border-ink mb-6 bg-ink text-white overflow-hidden relative">
