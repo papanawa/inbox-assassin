@@ -1,139 +1,276 @@
-// POST /api/gmail/execute
-// Fetches message IDs matching a query and performs the action on them
+// api/gmail/execute.js
+// Executes rules against Gmail. For unsubscribe_delete, fires actual unsubscribe first.
 
-async function getOrCreateLabel(BASE, headers, rawLabelName) {
-  const labelName = rawLabelName.trim().replace(/\s+/g, ' ')
-  const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const normalizedTarget = normalize(labelName)
+import { createClient } from '@supabase/supabase-js'
+import { performUnsubscribe } from './unsubscribe.js'
 
-  const listRes = await fetch(`${BASE}/labels`, { headers })
-  if (listRes.ok) {
-    const { labels } = await listRes.json()
-    const userLabels = labels?.filter(l => l.type === 'user') ?? []
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
 
-    // 1. Exact match (case-insensitive)
-    const exact = userLabels.find(l => l.name.toLowerCase() === labelName.toLowerCase())
-    if (exact) return exact.id
+// ─── Token helper ────────────────────────────────────────────────────────────
 
-    // 2. Normalized match (strips punctuation and spaces)
-    const fuzzy = userLabels.find(l => normalize(l.name) === normalizedTarget)
-    if (fuzzy) return fuzzy.id
+async function getValidToken(userId) {
+  const { data: tokenRow, error } = await supabase
+    .from('oauth_tokens')
+    .select('access_token, refresh_token, expires_at')
+    .eq('user_id', userId)
+    .single()
 
-    // 3. Partial match (one contains the other — catches Finance vs Financial/Banking)
-    const partial = userLabels.find(l => {
-      const a = normalize(l.name)
-      return a.includes(normalizedTarget) || normalizedTarget.includes(a)
-    })
-    if (partial) return partial.id
-  }
+  if (error || !tokenRow) throw new Error('No OAuth token found')
 
-  // No match — create new label
-  const createRes = await fetch(`${BASE}/labels`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      name: labelName,
-      labelListVisibility: 'labelShow',
-      messageListVisibility: 'show',
-    }),
+  const expiresAt = new Date(tokenRow.expires_at).getTime()
+  if (expiresAt - Date.now() > 60_000) return tokenRow.access_token
+
+  // Refresh
+  const params = new URLSearchParams({
+    client_id: process.env.VITE_GOOGLE_CLIENT_ID,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    refresh_token: tokenRow.refresh_token,
+    grant_type: 'refresh_token',
   })
-  if (!createRes.ok) return null
-  const label = await createRes.json()
-  return label.id ?? null
+
+  const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  })
+
+  const json = await refreshRes.json()
+  if (!json.access_token) throw new Error('Token refresh failed')
+
+  await supabase
+    .from('oauth_tokens')
+    .update({
+      access_token: json.access_token,
+      expires_at: new Date(Date.now() + json.expires_in * 1000).toISOString(),
+    })
+    .eq('user_id', userId)
+
+  return json.access_token
 }
 
+// ─── Query builder ────────────────────────────────────────────────────────────
+
+function buildQuery(rule) {
+  switch (rule.target_type) {
+    case 'sender':
+      return `from:${rule.target_value}`
+    case 'domain':
+      return `from:@${rule.target_value}`
+    case 'age':
+      return `older_than:${rule.target_value}d`
+    case 'keyword':
+      return `subject:${rule.target_value}`
+    case 'label':
+      return `label:${rule.target_value.replace(/\s+/g, '-')}`
+    case 'newsletter':
+      return `(list:* OR from:(*newsletter* OR *noreply* OR *no-reply* OR *unsubscribe*))`
+    default:
+      return ''
+  }
+}
+
+// ─── Gmail helpers ────────────────────────────────────────────────────────────
+
+async function listMessages(accessToken, query, maxResults = 500) {
+  const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
+  url.searchParams.set('q', `${query} -in:trash -in:sent`)
+  url.searchParams.set('maxResults', String(maxResults))
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  const data = await res.json()
+  return data.messages || []
+}
+
+async function getMessageHeaders(accessToken, messageId) {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  const data = await res.json()
+  const headers = {}
+  for (const h of data.payload?.headers || []) {
+    headers[h.name.toLowerCase()] = h.value
+  }
+  return headers
+}
+
+async function trashMessage(accessToken, messageId) {
+  await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  )
+}
+
+async function markRead(accessToken, messageId) {
+  await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ removeLabelIds: ['UNREAD'] }),
+    }
+  )
+}
+
+async function moveToLabel(accessToken, messageId, labelId) {
+  await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        addLabelIds: [labelId],
+        removeLabelIds: ['INBOX'],
+      }),
+    }
+  )
+}
+
+async function getOrCreateLabel(accessToken, labelName) {
+  // List labels
+  const listRes = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/labels',
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  )
+  const listData = await listRes.json()
+  const existing = (listData.labels || []).find(
+    l => l.name.toLowerCase() === labelName.toLowerCase()
+  )
+  if (existing) return existing.id
+
+  // Create
+  const createRes = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/labels',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: labelName }),
+    }
+  )
+  const created = await createRes.json()
+  return created.id
+}
+
+// ─── Execute single rule ──────────────────────────────────────────────────────
+
+async function executeRule(rule, accessToken, maxResults) {
+  const query = buildQuery(rule)
+  if (!query) return { rule: rule.name, count: 0, error: 'Invalid rule' }
+
+  const messages = await listMessages(accessToken, query, maxResults)
+  if (!messages.length) return { rule: rule.name, count: 0 }
+
+  let processed = 0
+  let unsubscribed = 0
+
+  for (const msg of messages) {
+    try {
+      if (rule.action === 'trash') {
+        await trashMessage(accessToken, msg.id)
+        processed++
+
+      } else if (rule.action === 'mark_read') {
+        await markRead(accessToken, msg.id)
+        processed++
+
+      } else if (rule.action === 'move') {
+        const labelId = rule.destination_label_id || rule.destination_label
+        if (labelId) {
+          await moveToLabel(accessToken, msg.id, labelId)
+          processed++
+        }
+
+      } else if (rule.action === 'create_and_move') {
+        const labelId = await getOrCreateLabel(accessToken, rule.destination_label)
+        await moveToLabel(accessToken, msg.id, labelId)
+        processed++
+
+      } else if (rule.action === 'unsubscribe_delete') {
+        // Get List-Unsubscribe header from this message
+        const headers = await getMessageHeaders(accessToken, msg.id)
+        const listUnsub = headers['list-unsubscribe']
+        const listUnsubPost = headers['list-unsubscribe-post']
+
+        if (listUnsub) {
+          const result = await performUnsubscribe(listUnsub, listUnsubPost, accessToken)
+          if (result.success) unsubscribed++
+        }
+
+        // Always trash regardless of unsubscribe result
+        await trashMessage(accessToken, msg.id)
+        processed++
+      }
+    } catch (err) {
+      console.warn(`Failed on message ${msg.id}:`, err.message)
+    }
+  }
+
+  return {
+    rule: rule.name,
+    action: rule.action,
+    count: processed,
+    unsubscribed: rule.action === 'unsubscribe_delete' ? unsubscribed : undefined,
+  }
+}
+
+// ─── Handler ──────────────────────────────────────────────────────────────────
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
 
-  const {
-    accessToken, query, action = 'trash', actionLabel,
-    pageToken = null, maxResults = 500, fullRun = false,
-  } = req.body
+  const { userId, rules, batchSize = 500 } = req.body
 
-  if (!accessToken) return res.status(401).json({ error: 'No access token' })
-  if (!query) return res.status(400).json({ error: 'No query provided' })
-
-  const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me'
-  const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
-
-  let allMessageIds = []
-  let nextPageToken = pageToken
-  let pages = 0
-  const maxPages = fullRun ? 100 : 1
+  if (!userId || !rules?.length) {
+    return res.status(400).json({ error: 'Missing userId or rules' })
+  }
 
   try {
-    // Resolve label ID upfront for move actions
-    let resolvedLabelId = null
-    if ((action === 'create_and_move' || action === 'move') && actionLabel) {
-      resolvedLabelId = await getOrCreateLabel(BASE, headers, actionLabel)
-      if (!resolvedLabelId) {
-        return res.status(400).json({ error: `Could not create label: ${actionLabel}` })
-      }
-    }
+    const accessToken = await getValidToken(userId)
+    const results = []
 
-    // Fetch message IDs
-    do {
-      const params = new URLSearchParams({ q: query, maxResults: Math.min(maxResults, 500) })
-      if (nextPageToken) params.set('pageToken', nextPageToken)
+    for (const rule of rules) {
+      const result = await executeRule(rule, accessToken, batchSize)
+      results.push(result)
 
-      const listRes = await fetch(`${BASE}/messages?${params}`, { headers })
-      if (!listRes.ok) {
-        const err = await listRes.json()
-        return res.status(listRes.status).json({ error: err.error?.message ?? 'Gmail list failed' })
-      }
-
-      const listData = await listRes.json()
-      allMessageIds.push(...(listData.messages ?? []).map(m => m.id))
-      nextPageToken = listData.nextPageToken ?? null
-      pages++
-      if (!fullRun) break
-    } while (nextPageToken && pages < maxPages)
-
-    if (allMessageIds.length === 0) {
-      return res.status(200).json({ succeeded: 0, failed: 0, total: 0, nextPageToken: null })
-    }
-
-    // Process in chunks of 50
-    const CHUNK = 50
-    let succeeded = 0
-    let failed = 0
-
-    for (let i = 0; i < allMessageIds.length; i += CHUNK) {
-      const chunk = allMessageIds.slice(i, i + CHUNK)
-      try {
-        let body
-
-        if (action === 'trash' || action === 'unsubscribe_delete') {
-          body = { ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX', 'UNREAD'] }
-        } else if (action === 'mark_read') {
-          body = { ids: chunk, removeLabelIds: ['UNREAD'] }
-        } else if ((action === 'move' || action === 'create_and_move') && resolvedLabelId) {
-          body = { ids: chunk, addLabelIds: [resolvedLabelId], removeLabelIds: ['INBOX'] }
-        } else {
-          body = { ids: chunk, addLabelIds: ['TRASH'], removeLabelIds: ['INBOX'] }
-        }
-
-        const modifyRes = await fetch(`${BASE}/messages/batchModify`, {
-          method: 'POST', headers, body: JSON.stringify(body),
+      // Log to Supabase
+      if (result.count > 0) {
+        await supabase.from('deletion_logs').insert({
+          user_id: userId,
+          rule_id: rule.id,
+          rule_name: rule.name,
+          action: rule.action,
+          emails_affected: result.count,
+          unsubscribed: result.unsubscribed ?? 0,
+          run_at: new Date().toISOString(),
         })
-
-        if (modifyRes.ok || modifyRes.status === 204) {
-          succeeded += chunk.length
-        } else {
-          failed += chunk.length
-        }
-      } catch {
-        failed += chunk.length
       }
     }
 
-    return res.status(200).json({
-      succeeded, failed,
-      total: allMessageIds.length,
-      nextPageToken: fullRun ? null : nextPageToken,
-    })
+    const totalAffected = results.reduce((sum, r) => sum + (r.count || 0), 0)
+    const totalUnsubscribed = results.reduce((sum, r) => sum + (r.unsubscribed || 0), 0)
+
+    return res.status(200).json({ results, totalAffected, totalUnsubscribed })
   } catch (err) {
     console.error('Execute error:', err)
-    return res.status(500).json({ error: 'Execution failed' })
+    return res.status(500).json({ error: err.message })
   }
 }
