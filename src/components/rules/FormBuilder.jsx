@@ -29,9 +29,35 @@ export default function FormBuilder({ getGmailToken, onRuleReady, initialRule })
   const [counting, setCounting] = useState(false)
   const [samples, setSamples] = useState([])
   const [samplesLoading, setSamplesLoading] = useState(false)
+  const [existingLabels, setExistingLabels] = useState([])
+  const [labelsLoading, setLabelsLoading] = useState(false)
   const debounceRef = useRef(null)
 
   const selectedAction = ACTIONS.find(a => a.id === action)
+
+  // Fetch existing labels when move action is selected
+  useEffect(() => {
+    if (action !== 'move' && action !== 'create_and_move') return
+    if (existingLabels.length > 0) return // already fetched
+    const fetchLabels = async () => {
+      setLabelsLoading(true)
+      try {
+        const token = await getGmailToken()
+        if (!token) return
+        const r = await fetch('/api/gmail/labels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken: token }),
+        })
+        if (r.ok) {
+          const data = await r.json()
+          setExistingLabels(data.labels ?? [])
+        }
+      } catch { /* silent */ }
+      setLabelsLoading(false)
+    }
+    fetchLabels()
+  }, [action])
 
   const currentRule = {
     name: name || `${ruleType} rule`,
@@ -193,40 +219,76 @@ export default function FormBuilder({ getGmailToken, onRuleReady, initialRule })
         </div>
       )}
 
-      {/* Action */}
-      {ruleType && (
-        <div>
-          <label className="block text-xs font-body font-medium text-ink-muted mb-2">Action</label>
-          <div className="space-y-2">
-            {ACTIONS.map(({ id, label, desc }) => (
-              <button key={id} onClick={() => setAction(id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
-                  action === id ? 'border-ink bg-ink text-white' : 'border-surface-border bg-white hover:border-ink-muted'
-                }`}
-              >
-                <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${
-                  action === id ? 'border-white bg-assassin-red' : 'border-surface-border'
-                }`} />
-                <div>
-                  <div className={`text-xs font-body font-medium ${action === id ? 'text-white' : 'text-ink'}`}>{label}</div>
-                  <div className={`text-xs font-body ${action === id ? 'text-white/70' : 'text-ink-faint'}`}>{desc}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Label input for move/create actions */}
-          {selectedAction?.needsLabel && (
-            <div className="mt-3 animate-fade-in">
-              <label className="block text-xs font-body font-medium text-ink-muted mb-1.5">
-                {selectedAction.labelPlaceholder}
-              </label>
-              <input className="input" placeholder={selectedAction.labelPlaceholder}
-                value={actionLabel} onChange={e => setActionLabel(e.target.value)} />
-            </div>
-          )}
+      {/* Action — always visible */}
+      <div>
+        <label className="block text-xs font-body font-medium text-ink-muted mb-2">Action</label>
+        <div className="space-y-2">
+          {ACTIONS.map(({ id, label, desc }) => (
+            <button key={id} onClick={() => setAction(id)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
+                action === id ? 'border-ink bg-ink text-white' : 'border-surface-border bg-white hover:border-ink-muted'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${
+                action === id ? 'border-white bg-assassin-red' : 'border-surface-border'
+              }`} />
+              <div>
+                <div className={`text-xs font-body font-medium ${action === id ? 'text-white' : 'text-ink'}`}>{label}</div>
+                <div className={`text-xs font-body ${action === id ? 'text-white/70' : 'text-ink-faint'}`}>{desc}</div>
+              </div>
+            </button>
+          ))}
         </div>
-      )}
+
+        {/* Label input for move/create actions */}
+        {selectedAction?.needsLabel && (
+          <div className="mt-3 animate-fade-in">
+            <label className="block text-xs font-body font-medium text-ink-muted mb-1.5">
+              {action === 'move' ? 'Select existing folder' : 'Folder name'}
+            </label>
+
+            {/* Existing labels dropdown for move */}
+            {action === 'move' && (
+              labelsLoading ? (
+                <div className="input text-ink-faint">Loading your folders...</div>
+              ) : existingLabels.length > 0 ? (
+                <select
+                  className="input"
+                  value={actionLabel}
+                  onChange={e => setActionLabel(e.target.value)}
+                >
+                  <option value="">— Select a folder —</option>
+                  {existingLabels.map(l => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              ) : (
+                <input className="input" placeholder="Label name..."
+                  value={actionLabel} onChange={e => setActionLabel(e.target.value)} />
+              )
+            )}
+
+            {/* Free text for create_and_move — show existing as datalist hints */}
+            {action === 'create_and_move' && (
+              <div>
+                <input
+                  className="input"
+                  list="existing-labels"
+                  placeholder="New folder name (or pick existing)..."
+                  value={actionLabel}
+                  onChange={e => setActionLabel(e.target.value)}
+                />
+                <datalist id="existing-labels">
+                  {existingLabels.map(l => <option key={l} value={l} />)}
+                </datalist>
+                <p className="text-xs font-body text-ink-faint mt-1.5">
+                  Type a new name or pick an existing folder above.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Live count + preview */}
       {query && (
