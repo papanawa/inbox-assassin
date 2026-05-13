@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     if (messages.length === 0) return res.status(200).json({ senders: [], total: 0 })
 
     // Step 2: Fetch metadata in chunks of 50
-    const CHUNK = 50
+    const CHUNK = 25
     const allMeta = []
 
     for (let i = 0; i < messages.length; i += CHUNK) {

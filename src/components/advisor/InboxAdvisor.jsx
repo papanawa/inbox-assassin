@@ -26,7 +26,7 @@ export default function InboxAdvisor({ getGmailToken, onRulesCreated, onClose })
       const r = await fetch('/api/gmail/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: token, maxMessages: 300 }),
+        body: JSON.stringify({ accessToken: token, maxMessages: 100 }),
       })
       const data = await r.json()
       setSenders(data.senders ?? [])
