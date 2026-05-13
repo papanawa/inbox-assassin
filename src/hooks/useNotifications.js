@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
-export function useNotifications(userId) {
+export function useNotifications(userOrId) {
   const [notifications, setNotifications] = useState([])
+  const userId = userOrId?.id ?? userOrId
 
   const fetchNotifications = useCallback(async () => {
-    if (!userId) return
+    if (!userId || typeof userId !== 'string') return
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -32,7 +33,7 @@ export function useNotifications(userId) {
   }
 
   async function markAllRead() {
-    if (!userId) return
+    if (!userId || typeof userId !== 'string') return
     await supabase
       .from('notifications')
       .update({ read: true })
