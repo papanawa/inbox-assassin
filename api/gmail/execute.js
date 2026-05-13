@@ -1,7 +1,8 @@
 // POST /api/gmail/execute
 // Fetches message IDs matching a query and performs the action on them
 
-async function getOrCreateLabel(BASE, headers, labelName) {
+async function getOrCreateLabel(BASE, headers, rawLabelName) {
+  const labelName = rawLabelName.trim().replace(/\s+/g, ' ')
   // First try to find existing label
   const listRes = await fetch(`${BASE}/labels`, { headers })
   if (listRes.ok) {
