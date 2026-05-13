@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Crosshair, ListChecks, Trash2, ScrollText, ArrowRight, Zap } from 'lucide-react'
+import { Crosshair, ListChecks, Trash2, ScrollText, ArrowRight, Sparkles } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import RunGate from '../components/run/RunGate'
 import RunProgress from '../components/run/RunProgress'
 import RunSummary from '../components/run/RunSummary'
+import InboxAdvisor from '../components/advisor/InboxAdvisor'
 
 const RUN_STATE = { IDLE: 'idle', GATE: 'gate', RUNNING: 'running', SUMMARY: 'summary' }
 
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [runState, setRunState] = useState(RUN_STATE.IDLE)
   const [runConfig, setRunConfig] = useState(null)
   const [runResults, setRunResults] = useState(null)
+  const [showAdvisor, setShowAdvisor] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -33,9 +35,12 @@ export default function Dashboard() {
       ])
       const rules = rulesRes.data ?? []
       const logs = logsRes.data ?? []
-      const totalDeleted = logs.reduce((sum, l) => sum + (l.total_deleted ?? 0), 0)
       setActiveRules(rules)
-      setStats({ rules: rules.length, runs: logs.length, deleted: totalDeleted })
+      setStats({
+        rules: rules.length,
+        runs: logs.length,
+        deleted: logs.reduce((sum, l) => sum + (l.total_deleted ?? 0), 0),
+      })
       setRecentLogs(logs)
     } catch (err) {
       console.error('Dashboard fetch error:', err)
@@ -58,40 +63,37 @@ export default function Dashboard() {
   const handleRunComplete = async (results) => {
     setRunResults(results)
     setRunState(RUN_STATE.SUMMARY)
-
-    // Log to Supabase
     const totalDeleted = results.reduce((sum, r) => sum + (r.succeeded ?? 0), 0)
     await supabase.from('deletion_logs').insert({
       user_id: user.id,
       run_label: runConfig?.mode === 'batch' ? `Batch Run (${runConfig.batchSize})` : 'Full Run',
       total_deleted: totalDeleted,
       rules_applied: results.map(r => ({
-        rule_id: r.rule.id,
-        rule_name: r.rule.name,
-        emails_deleted: r.succeeded ?? 0,
+        rule_id: r.rule.id, rule_name: r.rule.name, emails_deleted: r.succeeded ?? 0,
       })),
       status: 'completed',
     })
-
-    // Update rule run_count
     for (const r of results) {
       await supabase.from('rules')
         .update({ run_count: (r.rule.run_count ?? 0) + 1, last_run_at: new Date().toISOString() })
         .eq('id', r.rule.id)
     }
-
     await fetchData()
   }
 
-  const handleNextBatch = () => {
-    setRunState(RUN_STATE.GATE)
-    setRunResults(null)
+  const handleAdvisorRules = async (rules) => {
+    for (const rule of rules) {
+      await supabase.from('rules').insert({ ...rule, user_id: user.id })
+    }
+    await fetchData()
   }
 
   const firstName = user?.user_metadata?.full_name?.split(' ')[0] ?? 'Operative'
+  const hasRules = activeRules.length > 0
 
   return (
     <div className="max-w-4xl animate-slide-up">
+      {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>
           <h2 className="font-display font-700 text-3xl text-ink mb-1">
@@ -99,14 +101,12 @@ export default function Dashboard() {
           </h2>
           <p className="font-body text-sm text-ink-muted">Your inbox is waiting for orders.</p>
         </div>
-
-        {/* Run button */}
-        {activeRules.length > 0 && (
+        {hasRules && (
           <button
             onClick={() => setRunState(RUN_STATE.GATE)}
             className="flex items-center gap-2 bg-assassin-red text-white font-body font-medium
                        text-sm px-5 py-2.5 rounded-lg hover:bg-assassin-red-hover
-                       transition-all duration-200 cursor-crosshair animate-pulse-red"
+                       transition-all duration-200 cursor-crosshair"
           >
             <Crosshair size={15} strokeWidth={2.5} />
             Run Cleanup
@@ -114,22 +114,44 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* AI Advisor hero card — primary entry point */}
+      <div className="card border-ink mb-6 bg-ink text-white overflow-hidden relative">
+        <div className="absolute top-0 right-0 w-48 h-48 opacity-5">
+          <Crosshair size={192} strokeWidth={0.5} />
+        </div>
+        <div className="relative flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={14} className="text-assassin-red" strokeWidth={2} />
+              <span className="text-xs font-mono text-white/60 uppercase tracking-widest">AI Inbox Advisor</span>
+            </div>
+            <h3 className="font-display font-700 text-xl text-white mb-1">
+              Not sure what to clean?
+            </h3>
+            <p className="text-sm font-body text-white/70 leading-relaxed max-w-sm">
+              Let Claude scan your inbox, show you what's cluttering it, and build the rules for you.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAdvisor(true)}
+            className="shrink-0 flex items-center gap-2 bg-assassin-red text-white font-body
+                       font-medium text-sm px-5 py-2.5 rounded-lg hover:bg-assassin-red-hover
+                       transition-all cursor-crosshair whitespace-nowrap"
+          >
+            <Crosshair size={14} strokeWidth={2.5} />
+            Scan My Inbox
+          </button>
+        </div>
+      </div>
+
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <StatCard label="Active Rules" value={loading ? '—' : stats.rules}
           icon={<ListChecks size={18} strokeWidth={2} />} color="ink" />
         <StatCard label="Emails Eliminated" value={loading ? '—' : stats.deleted.toLocaleString()}
           icon={<Trash2 size={18} strokeWidth={2} />} color="red" />
         <StatCard label="Runs Completed" value={loading ? '—' : stats.runs}
           icon={<Crosshair size={18} strokeWidth={2} />} color="ink" />
-      </div>
-
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <ActionCard to="/rules" icon={<Zap size={20} strokeWidth={2} />}
-          title="Build a Rule" description="Target a sender, domain, age, or keyword." primary />
-        <ActionCard to="/audit" icon={<ScrollText size={20} strokeWidth={2} />}
-          title="View Audit Log" description="See every deletion run and what was removed." />
       </div>
 
       {/* Recent activity */}
@@ -148,9 +170,7 @@ export default function Dashboard() {
               <Crosshair size={18} className="text-ink-faint" strokeWidth={1.5} />
             </div>
             <p className="text-sm font-body text-ink-muted">No runs yet.</p>
-            <p className="text-xs font-body text-ink-faint mt-1">
-              {activeRules.length > 0 ? 'Hit Run Cleanup to start.' : 'Head to Rules to set up your first target.'}
-            </p>
+            <p className="text-xs font-body text-ink-faint mt-1">Hit Scan My Inbox to get started.</p>
           </div>
         ) : (
           <div className="divide-y divide-surface-border">
@@ -159,23 +179,28 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* AI Advisor */}
+      {showAdvisor && (
+        <InboxAdvisor
+          getGmailToken={getGmailToken}
+          onRulesCreated={handleAdvisorRules}
+          onClose={() => setShowAdvisor(false)}
+        />
+      )}
+
       {/* Run Gate */}
       {runState === RUN_STATE.GATE && (
-        <RunGate
-          rules={activeRules}
-          getGmailToken={getGmailToken}
-          onConfirm={handleRunConfirm}
-          onClose={() => setRunState(RUN_STATE.IDLE)}
-        />
+        <RunGate rules={activeRules} getGmailToken={getGmailToken}
+          onConfirm={handleRunConfirm} onClose={() => setRunState(RUN_STATE.IDLE)} />
       )}
 
       {/* Run Progress */}
       {runState === RUN_STATE.RUNNING && runConfig && (
         <RunProgress
           selectedRules={runConfig.selectedRules}
-          gmailToken={runConfig.gmailToken}
           mode={runConfig.mode}
           batchSize={runConfig.batchSize}
+          gmailToken={runConfig.gmailToken}
           getGmailToken={getGmailToken}
           onComplete={handleRunComplete}
         />
@@ -187,7 +212,7 @@ export default function Dashboard() {
           results={runResults}
           mode={runConfig?.mode}
           batchSize={runConfig?.batchSize}
-          onNextBatch={handleNextBatch}
+          onNextBatch={() => setRunState(RUN_STATE.GATE)}
           onClose={() => setRunState(RUN_STATE.IDLE)}
         />
       )}
@@ -206,23 +231,6 @@ function StatCard({ label, value, icon, color }) {
         <div className="text-xs font-body text-ink-muted">{label}</div>
       </div>
     </div>
-  )
-}
-
-function ActionCard({ to, icon, title, description, primary }) {
-  return (
-    <Link to={to}
-      className={`card group hover:border-ink-muted transition-all duration-200 no-underline ${primary ? 'border-ink' : ''}`}
-    >
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${
-        primary ? 'bg-ink text-white' : 'bg-surface-muted text-ink'
-      }`}>{icon}</div>
-      <div className="font-display font-600 text-sm text-ink mb-1">{title}</div>
-      <div className="text-xs font-body text-ink-muted leading-relaxed">{description}</div>
-      <div className="flex items-center gap-1 mt-3 text-xs font-body text-ink-faint group-hover:text-ink transition-colors">
-        Go <ArrowRight size={11} />
-      </div>
-    </Link>
   )
 }
 
