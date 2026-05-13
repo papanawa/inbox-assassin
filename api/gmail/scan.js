@@ -63,19 +63,22 @@ function parseFromAddress(fromHeader) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
+  if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const userId = req.query.userId
-  if (!userId) return res.status(400).json({ error: 'Missing userId' })
+  const { accessToken: bodyToken, userId, maxMessages = 100 } = req.body
+
+  if (!bodyToken && !userId) {
+    return res.status(400).json({ error: 'Missing accessToken or userId' })
+  }
 
   try {
-    const accessToken = await getValidToken(userId)
+    const accessToken = bodyToken || await getValidToken(userId)
 
-    // Step 1: List 100 recent inbox messages (metadata only for speed)
+    // Step 1: List recent inbox messages (metadata only for speed)
     const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
-    listUrl.searchParams.set('maxResults', '100')
+    listUrl.searchParams.set('maxResults', String(maxMessages))
     listUrl.searchParams.set('labelIds', 'INBOX')
     listUrl.searchParams.set('q', '-in:sent -in:trash -in:draft')
 
