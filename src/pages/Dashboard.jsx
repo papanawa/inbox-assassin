@@ -11,7 +11,7 @@ import InboxAdvisor from '../components/advisor/InboxAdvisor'
 const RUN_STATE = { IDLE: 'idle', GATE: 'gate', RUNNING: 'running', SUMMARY: 'summary' }
 
 export default function Dashboard() {
-  const { user, getGmailToken } = useAuth()
+  const { user, displayName, getGmailToken, loading: authLoading } = useAuth()
   const [stats, setStats] = useState({ rules: 0, runs: 0, deleted: 0 })
   const [recentLogs, setRecentLogs] = useState([])
   const [activeRules, setActiveRules] = useState([])
@@ -21,10 +21,14 @@ export default function Dashboard() {
   const [runResults, setRunResults] = useState(null)
   const [showAdvisor, setShowAdvisor] = useState(false)
 
+
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      if (!authLoading) setLoading(false)
+      return
+    }
     fetchData()
-  }, [user])
+  }, [user, authLoading])
 
   const fetchData = async () => {
     try {
@@ -88,7 +92,7 @@ export default function Dashboard() {
     await fetchData()
   }
 
-  const firstName = user?.user_metadata?.full_name?.split(' ')[0] ?? 'Operative'
+  const firstName = displayName?.split(' ')[0] ?? 'Operative'
   const hasRules = activeRules.length > 0
 
   return (
