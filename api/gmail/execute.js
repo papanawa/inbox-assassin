@@ -2,7 +2,73 @@
 // Executes rules against Gmail. For unsubscribe_delete, fires actual unsubscribe first.
 
 import { createClient } from '@supabase/supabase-js'
-import { performUnsubscribe } from './unsubscribe.js'
+
+// ─── Unsubscribe helper (inlined to stay within Vercel Hobby 12-function limit) ─
+
+async function performUnsubscribe(listUnsubscribe, listUnsubscribePost, accessToken) {
+  const parts = listUnsubscribe.split(',').map(s => s.trim())
+  let httpUrl = null
+  let mailtoRaw = null
+
+  for (const part of parts) {
+    const match = part.match(/<([^>]+)>/)
+    if (!match) continue
+    const url = match[1]
+    if (url.startsWith('http://') || url.startsWith('https://')) httpUrl = url
+    else if (url.startsWith('mailto:')) mailtoRaw = url
+  }
+
+  if (httpUrl) {
+    try {
+      const isOneClick = listUnsubscribePost?.toLowerCase().includes('one-click')
+      const response = await fetch(httpUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: isOneClick ? 'List-Unsubscribe=One-Click' : '',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(8000),
+      })
+      if (response.ok || response.status === 301 || response.status === 302) {
+        return { method: 'http', success: true, url: httpUrl }
+      }
+    } catch (err) {
+      console.warn('HTTP unsubscribe failed:', err.message)
+    }
+  }
+
+  if (mailtoRaw) {
+    try {
+      const withoutScheme = mailtoRaw.replace('mailto:', '')
+      const [address, queryString] = withoutScheme.split('?')
+      const params = new URLSearchParams(queryString || '')
+      const subject = params.get('subject') || 'Unsubscribe'
+      const body = params.get('body') || 'Please unsubscribe me from this mailing list.'
+      const emailLines = [
+        `To: ${address}`,
+        `Subject: ${subject}`,
+        `Content-Type: text/plain; charset=utf-8`,
+        `MIME-Version: 1.0`,
+        '',
+        body,
+      ]
+      const raw = Buffer.from(emailLines.join('\r\n')).toString('base64url')
+      const gmailRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (gmailRes.ok) return { method: 'mailto', success: true, address }
+    } catch (err) {
+      console.warn('Mailto unsubscribe failed:', err.message)
+    }
+  }
+
+  return { method: 'none', success: false }
+}
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
