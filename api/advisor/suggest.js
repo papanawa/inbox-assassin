@@ -9,12 +9,8 @@ export default async function handler(req, res) {
   }
 
   const { senders, existingLabels = [] } = req.body
+  if (!senders?.length) return res.status(400).json({ error: 'No senders provided' })
 
-  if (!senders?.length) {
-    return res.status(400).json({ error: 'No senders provided' })
-  }
-
-  // Cap at 15 to stay within Vercel Hobby 10s timeout
   const cappedSenders = senders.slice(0, 15)
 
   const senderDescriptions = cappedSenders.map(s => [
@@ -33,32 +29,34 @@ export default async function handler(req, res) {
 Available actions:
 - trash: Delete emails from this sender
 - unsubscribe_delete: Unsubscribe AND delete (ONLY when "Supports one-click unsubscribe: YES")
-- move: Move to an existing label (requires destination_label)
+- move: Move to an existing label (requires action_config.label)
 - mark_read: Auto-mark as read
-- create_and_move: Create a new label and move there
+- create_and_move: Create a new label and move there (requires action_config.label)
 
 ${labelsList}
 
 Rules:
 1. If sender supports one-click unsubscribe, ALWAYS use "unsubscribe_delete"
 2. Reuse existing labels when a good match exists
-3. Reasoning must be one sentence max
+3. reasoning must be one sentence max
 4. Return ONLY a valid JSON array — no markdown, no backticks, no explanation
 
 Response format:
 [
   {
-    "name": "Short rule name",
-    "target_type": "sender",
-    "target_value": "email@example.com",
+    "rule_name": "Short rule name",
+    "description": "One sentence describing what this rule targets",
+    "rule_type": "sender",
+    "config": { "value": "email@example.com" },
     "action": "unsubscribe_delete",
-    "destination_label": null,
+    "action_config": { "label": null },
     "reasoning": "One sentence why."
   }
 ]
 
-target_type: sender, domain, or newsletter
-destination_label: required for move/create_and_move, null for all others`
+rule_type must be one of: sender, domain, newsletter
+config.value: the email address, domain, or keyword being targeted
+action_config.label: destination label name for move/create_and_move, null for all others`
 
   try {
     const response = await client.messages.create({
@@ -83,16 +81,17 @@ destination_label: required for move/create_and_move, null for all others`
       return res.status(200).json({ proposals: [], error: 'Not an array' })
     }
 
-    // Enrich unsubscribe_delete rules with header data
+    // Enrich with sender count + unsubscribe data
     const enriched = proposals.map(rule => {
       const sender = cappedSenders.find(s =>
-        s.email === rule.target_value ||
-        s.email?.endsWith('@' + rule.target_value)
+        s.email === rule.config?.value ||
+        s.email?.endsWith('@' + rule.config?.value)
       )
+      const base = { ...rule, count: sender?.count ?? 0 }
       if (sender?.hasUnsubscribe && rule.action === 'unsubscribe_delete') {
-        return { ...rule, listUnsubscribe: sender.listUnsubscribe, listUnsubscribePost: sender.listUnsubscribePost }
+        return { ...base, listUnsubscribe: sender.listUnsubscribe, listUnsubscribePost: sender.listUnsubscribePost }
       }
-      return rule
+      return base
     })
 
     return res.status(200).json({ proposals: enriched })

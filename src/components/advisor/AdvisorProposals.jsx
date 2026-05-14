@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import { Check, X, Trash2, FolderInput, BookmarkCheck, ArrowLeft, Crosshair, Pencil } from 'lucide-react'
+import { Check, X, Trash2, FolderInput, BookmarkCheck, ArrowLeft, Crosshair, Pencil, MailX } from 'lucide-react'
 
 const ACTIONS = [
-  { id: 'trash',            label: 'Delete',              icon: Trash2 },
-  { id: 'create_and_move',  label: 'Create folder + Move', icon: FolderInput },
-  { id: 'mark_read',        label: 'Mark as read',         icon: BookmarkCheck },
+  { id: 'trash',            label: 'Delete',                icon: Trash2 },
+  { id: 'unsubscribe_delete', label: 'Unsubscribe + Delete', icon: MailX },
+  { id: 'create_and_move',  label: 'Create folder + Move',  icon: FolderInput },
+  { id: 'mark_read',        label: 'Mark as read',          icon: BookmarkCheck },
 ]
 
 const ACTION_COLORS = {
-  trash:            'text-assassin-red bg-assassin-red-light',
-  create_and_move:  'text-blue-600 bg-blue-50',
-  mark_read:        'text-amber-600 bg-amber-50',
+  trash:              'text-assassin-red bg-assassin-red-light',
+  unsubscribe_delete: 'text-purple-600 bg-purple-50',
+  create_and_move:    'text-blue-600 bg-blue-50',
+  move:               'text-blue-600 bg-blue-50',
+  mark_read:          'text-amber-600 bg-amber-50',
 }
 
 export default function AdvisorProposals({ proposals, onCreateRules, onBack }) {
   const [items, setItems] = useState(proposals.map((p, i) => ({ ...p, accepted: true, id: i })))
-  const [editing, setEditing] = useState(null) // index of item being edited
+  const [editing, setEditing] = useState(null)
 
   const acceptedItems = items.filter(p => p.accepted)
 
@@ -28,17 +31,19 @@ export default function AdvisorProposals({ proposals, onCreateRules, onBack }) {
   }
 
   const handleCreate = () => {
+    // Map to Supabase rules table schema
     const rules = acceptedItems.map(p => ({
       name: p.rule_name,
-      rule_type: p.rule_type ?? 'sender',
-      config: {
-        ...p.config,
-        action_label: p.action_config?.label ?? '',
-        description: p.description,
-      },
+      target_type: p.rule_type ?? 'sender',
+      target_value: p.config?.value ?? '',
       action: p.action,
-      action_config: p.action_config ?? {},
+      destination_label: p.action_config?.label ?? null,
       is_active: true,
+      // Pass through unsubscribe data if present
+      ...(p.listUnsubscribe ? {
+        list_unsubscribe: p.listUnsubscribe,
+        list_unsubscribe_post: p.listUnsubscribePost,
+      } : {}),
     }))
     onCreateRules(rules)
   }
@@ -97,14 +102,14 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
 
   const ActionIcon = ACTIONS.find(a => a.id === proposal.action)?.icon ?? Trash2
   const actionColor = ACTION_COLORS[proposal.action] ?? ACTION_COLORS.trash
-  const needsLabel = proposal.action === 'create_and_move' || proposal.action === 'move'
+  const actionLabel = ACTIONS.find(a => a.id === proposal.action)?.label ?? proposal.action
+  const needsLabel = editAction === 'create_and_move' || editAction === 'move'
 
   const handleSave = () => {
     onUpdate({
       rule_name: editName,
       action: editAction,
-      action_config: { label: editLabel },
-      description: proposal.description,
+      action_config: { label: editLabel || null },
     })
   }
 
@@ -125,13 +130,12 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
 
         <div className="flex-1 min-w-0">
           {!isEditing ? (
-            /* View mode */
             <>
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="text-sm font-body font-medium text-ink">{proposal.rule_name}</span>
                 <span className={`flex items-center gap-1 text-xs font-body font-medium px-2 py-0.5 rounded-full ${actionColor}`}>
                   <ActionIcon size={10} strokeWidth={2} />
-                  {ACTIONS.find(a => a.id === proposal.action)?.label ?? proposal.action}
+                  {actionLabel}
                 </span>
                 {proposal.action_config?.label && (
                   <span className="text-xs font-mono text-ink-faint">→ {proposal.action_config.label}</span>
@@ -148,14 +152,15 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
                   </p>
                 </div>
               </div>
-              <div className="mt-1.5">
-                <span className="text-xs font-mono text-assassin-red font-medium">
-                  {proposal.count} emails
-                </span>
-              </div>
+              {proposal.count > 0 && (
+                <div className="mt-1.5">
+                  <span className="text-xs font-mono text-assassin-red font-medium">
+                    {proposal.count} emails
+                  </span>
+                </div>
+              )}
             </>
           ) : (
-            /* Edit mode */
             <div className="space-y-3 py-1 animate-fade-in">
               <div>
                 <label className="block text-xs font-body text-ink-muted mb-1">Rule name</label>
@@ -165,7 +170,7 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
               </div>
               <div>
                 <label className="block text-xs font-body text-ink-muted mb-1">Action</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   {ACTIONS.map(({ id, label, icon: Icon }) => (
                     <button key={id} onClick={() => setEditAction(id)}
                       className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-center
@@ -181,7 +186,7 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
                   ))}
                 </div>
               </div>
-              {(editAction === 'create_and_move' || editAction === 'move') && (
+              {needsLabel && (
                 <div className="animate-fade-in">
                   <label className="block text-xs font-body text-ink-muted mb-1">
                     {editAction === 'create_and_move' ? 'New folder name' : 'Existing label'}
@@ -194,13 +199,11 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
               )}
               <div className="flex gap-2">
                 <button onClick={handleSave}
-                  className="flex-1 py-2 bg-ink text-white text-xs font-body rounded-lg
-                             hover:bg-ink-muted transition-all">
+                  className="flex-1 py-2 bg-ink text-white text-xs font-body rounded-lg hover:bg-ink-muted transition-all">
                   Save
                 </button>
                 <button onClick={() => { setEditName(proposal.rule_name); setEditAction(proposal.action); onEdit() }}
-                  className="px-3 py-2 border border-surface-border text-xs font-body rounded-lg
-                             text-ink-muted hover:bg-surface-hover transition-all">
+                  className="px-3 py-2 border border-surface-border text-xs font-body rounded-lg text-ink-muted hover:bg-surface-hover transition-all">
                   Cancel
                 </button>
               </div>
@@ -208,18 +211,15 @@ function ProposalCard({ proposal, isEditing, onToggleAccept, onEdit, onUpdate })
           )}
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-1 shrink-0">
           {!isEditing && (
             <button onClick={onEdit}
-              className="w-6 h-6 rounded-md hover:bg-surface-hover flex items-center
-                         justify-center text-ink-faint hover:text-ink transition-all">
+              className="w-6 h-6 rounded-md hover:bg-surface-hover flex items-center justify-center text-ink-faint hover:text-ink transition-all">
               <Pencil size={11} strokeWidth={2} />
             </button>
           )}
           <button onClick={onToggleAccept}
-            className="w-6 h-6 rounded-md hover:bg-surface-hover flex items-center
-                       justify-center text-ink-faint hover:text-assassin-red transition-all">
+            className="w-6 h-6 rounded-md hover:bg-surface-hover flex items-center justify-center text-ink-faint hover:text-assassin-red transition-all">
             <X size={12} strokeWidth={2} />
           </button>
         </div>
