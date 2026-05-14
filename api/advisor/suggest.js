@@ -1,10 +1,9 @@
 // api/advisor/suggest.js
-// Takes selected senders and asks Claude to propose cleanup rules.
-// Newsletter senders (hasUnsubscribe=true) get unsubscribe_delete proposed.
+import Anthropic from '@anthropic-ai/sdk'
 
-const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -18,16 +17,12 @@ module.exports = async function handler(req, res) {
   // Cap at 15 to stay within Vercel Hobby 10s timeout
   const cappedSenders = senders.slice(0, 15)
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-  const senderDescriptions = cappedSenders.map(s => {
-    return [
-      `Sender: ${s.name} <${s.email}>`,
-      `Email count: ${s.count}`,
-      `Sample subjects: ${s.subjects?.join(' | ') || 'none'}`,
-      `Supports one-click unsubscribe: ${s.hasUnsubscribe ? 'YES' : 'no'}`,
-    ].join('\n')
-  }).join('\n\n')
+  const senderDescriptions = cappedSenders.map(s => [
+    `Sender: ${s.name} <${s.email}>`,
+    `Email count: ${s.count}`,
+    `Sample subjects: ${s.subjects?.join(' | ') || 'none'}`,
+    `Supports one-click unsubscribe: ${s.hasUnsubscribe ? 'YES' : 'no'}`,
+  ].join('\n')).join('\n\n')
 
   const labelsList = existingLabels.length
     ? `Existing Gmail labels: ${existingLabels.join(', ')}`
@@ -37,7 +32,7 @@ module.exports = async function handler(req, res) {
 
 Available actions:
 - trash: Delete emails from this sender
-- unsubscribe_delete: Unsubscribe AND delete (ONLY use when "Supports one-click unsubscribe: YES")
+- unsubscribe_delete: Unsubscribe AND delete (ONLY when "Supports one-click unsubscribe: YES")
 - move: Move to an existing label (requires destination_label)
 - mark_read: Auto-mark as read
 - create_and_move: Create a new label and move there
@@ -48,7 +43,7 @@ Rules:
 1. If sender supports one-click unsubscribe, ALWAYS use "unsubscribe_delete"
 2. Reuse existing labels when a good match exists
 3. Reasoning must be one sentence max
-4. Return ONLY valid JSON array, no markdown, no backticks
+4. Return ONLY a valid JSON array — no markdown, no backticks, no explanation
 
 Response format:
 [
@@ -81,14 +76,14 @@ destination_label: required for move/create_and_move, null for all others`
       proposals = JSON.parse(cleaned)
     } catch (e) {
       console.error('Parse error:', text)
-      return res.status(200).json({ proposals: [], error: 'Parse error', raw: text })
+      return res.status(200).json({ proposals: [], error: 'Parse error' })
     }
 
     if (!Array.isArray(proposals)) {
       return res.status(200).json({ proposals: [], error: 'Not an array' })
     }
 
-    // Enrich proposals with unsubscribe data
+    // Enrich unsubscribe_delete rules with header data
     const enriched = proposals.map(rule => {
       const sender = cappedSenders.find(s =>
         s.email === rule.target_value ||
