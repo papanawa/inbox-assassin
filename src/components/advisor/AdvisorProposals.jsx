@@ -1,16 +1,16 @@
 import { useState } from 'react'
-import { Check, X, Trash2, FolderInput, BookmarkCheck, ArrowLeft, Crosshair, Pencil, MailX } from 'lucide-react'
+import { Check, X, Trash2, FolderInput, BookmarkCheck, ArrowLeft, Crosshair, Pencil } from 'lucide-react'
 
 const ACTIONS = [
   { id: 'trash',            label: 'Delete',                icon: Trash2 },
-  { id: 'unsubscribe_delete', label: 'Unsubscribe + Delete', icon: MailX },
+  { id: 'unsubscribe_delete', label: 'Unsubscribe + Delete', icon: Trash2 },
   { id: 'create_and_move',  label: 'Create folder + Move',  icon: FolderInput },
   { id: 'mark_read',        label: 'Mark as read',          icon: BookmarkCheck },
 ]
 
 const ACTION_COLORS = {
   trash:              'text-assassin-red bg-assassin-red-light',
-  unsubscribe_delete: 'text-purple-600 bg-purple-50',
+  unsubscribe_delete: 'text-purple-700 bg-purple-50',
   create_and_move:    'text-blue-600 bg-blue-50',
   move:               'text-blue-600 bg-blue-50',
   mark_read:          'text-amber-600 bg-amber-50',
@@ -31,20 +31,31 @@ export default function AdvisorProposals({ proposals, onCreateRules, onBack }) {
   }
 
   const handleCreate = () => {
-    // Map to Supabase rules table schema
-    const rules = acceptedItems.map(p => ({
-      name: p.rule_name,
-      target_type: p.rule_type ?? 'sender',
-      target_value: p.config?.value ?? '',
-      action: p.action,
-      destination_label: p.action_config?.label ?? null,
-      is_active: true,
-      // Pass through unsubscribe data if present
-      ...(p.listUnsubscribe ? {
-        list_unsubscribe: p.listUnsubscribe,
-        list_unsubscribe_post: p.listUnsubscribePost,
-      } : {}),
-    }))
+    const rules = acceptedItems.map(p => {
+      const ruleType = p.rule_type ?? 'sender'
+      const value = p.config?.value ?? ''
+
+      // Build config matching the rules table schema used by buildQuery()
+      let config = {}
+      switch (ruleType) {
+        case 'sender':    config = { email: value }; break
+        case 'domain':    config = { domain: value }; break
+        case 'newsletter': config = {}; break
+        case 'age':       config = { older_than_days: parseInt(value) || 30 }; break
+        case 'keyword':   config = { keywords: [value], match: 'any' }; break
+        case 'label':     config = { label: value }; break
+        default:          config = { email: value }
+      }
+
+      return {
+        name: p.rule_name,
+        rule_type: ruleType,
+        config,
+        action: p.action,
+        action_config: p.action_config ?? {},
+        is_active: true,
+      }
+    })
     onCreateRules(rules)
   }
 
