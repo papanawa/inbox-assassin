@@ -2,6 +2,34 @@ import { useEffect, useState } from 'react'
 import { Crosshair, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { buildQuery } from '../../lib/gmail'
 
+function actionSummary(rule, data) {
+  const n = data.succeeded ?? 0
+  const label = rule.action_config?.label ?? rule.config?.action_label ?? ''
+  const action = rule.action ?? 'trash'
+
+  if (n === 0) return '0 emails affected'
+
+  switch (action) {
+    case 'trash':
+      return `${n.toLocaleString()} email${n !== 1 ? 's' : ''} deleted`
+    case 'unsubscribe_delete': {
+      const unsub = data.unsubscribed ?? 0
+      return unsub > 0
+        ? `${n.toLocaleString()} deleted · ${unsub} unsubscribed`
+        : `${n.toLocaleString()} email${n !== 1 ? 's' : ''} deleted`
+    }
+    case 'move':
+    case 'create_and_move':
+      return label
+        ? `${n.toLocaleString()} moved to ${label}`
+        : `${n.toLocaleString()} email${n !== 1 ? 's' : ''} moved`
+    case 'mark_read':
+      return `${n.toLocaleString()} marked as read`
+    default:
+      return `${n.toLocaleString()} email${n !== 1 ? 's' : ''} processed`
+  }
+}
+
 export default function RunProgress({ selectedRules, mode, batchSize, gmailToken, getGmailToken, onComplete }) {
   const [results, setResults] = useState(
     selectedRules.map(r => ({ rule: r, status: 'pending', succeeded: 0, failed: 0, total: 0 }))
@@ -55,6 +83,7 @@ export default function RunProgress({ selectedRules, mode, batchSize, gmailToken
           succeeded: data.succeeded ?? 0,
           failed: data.failed ?? 0,
           total: data.total ?? 0,
+          unsubscribed: data.unsubscribed ?? 0,
           nextPageToken: data.nextPageToken,
         })
         finalResults.push({ rule, ...data })
@@ -101,8 +130,8 @@ export default function RunProgress({ selectedRules, mode, batchSize, gmailToken
 
         {/* Rule progress list */}
         <div className="px-6 py-4 space-y-3 max-h-80 overflow-y-auto">
-          {results.map(({ rule, status, succeeded, failed, total }, i) => (
-            <div key={rule.id} className="flex items-center gap-3">
+          {results.map(({ rule, status, succeeded, failed, total, unsubscribed }, i) => (
+            <div key={rule.id ?? i} className="flex items-center gap-3">
               {/* Status icon */}
               <div className="w-5 h-5 flex items-center justify-center shrink-0">
                 {status === 'pending' && <div className="w-2 h-2 rounded-full bg-surface-border" />}
@@ -118,15 +147,23 @@ export default function RunProgress({ selectedRules, mode, batchSize, gmailToken
                   <span className={`text-xs font-body font-medium truncate ${
                     status === 'pending' ? 'text-ink-faint' : 'text-ink'
                   }`}>{rule.name}</span>
-                  {status === 'done' && (
-                    <span className="text-xs font-mono text-assassin-red shrink-0 font-medium">
-                      −{succeeded.toLocaleString()}
-                    </span>
-                  )}
                   {status === 'running' && (
                     <span className="text-xs font-mono text-ink-faint shrink-0">running...</span>
                   )}
                 </div>
+
+                {/* Action summary line */}
+                {status === 'done' && (
+                  <p className="text-xs font-mono text-assassin-red font-medium mt-0.5">
+                    {actionSummary(rule, { succeeded, failed, total, unsubscribed })}
+                  </p>
+                )}
+                {status === 'error' && (
+                  <p className="text-xs font-mono text-assassin-red mt-0.5">failed — check logs</p>
+                )}
+                {status === 'skipped' && (
+                  <p className="text-xs font-mono text-ink-faint mt-0.5">skipped — no query</p>
+                )}
 
                 {/* Progress bar */}
                 <div className="mt-1 h-1 bg-surface-border rounded-full overflow-hidden">
