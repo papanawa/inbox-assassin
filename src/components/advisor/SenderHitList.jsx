@@ -1,9 +1,6 @@
 // src/components/advisor/SenderHitList.jsx
-// Displays grouped sender list from inbox scan.
-// Shows newsletter badge for senders with List-Unsubscribe headers.
-// Separates unsubscribe candidates into their own section.
-
-import { useState } from 'react'
+// Uses InboxAdvisor's external selection state via props.
+// Props: senders, selected (array of emails), onToggle, onToggleAll, onAnalyze
 
 function NewsletterBadge() {
   return (
@@ -36,7 +33,7 @@ function SenderRow({ sender, selected, onToggle }) {
         <p className="text-xs text-gray-400 truncate mt-0.5">{sender.email}</p>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs font-semibold text-assassin-red">{sender.count} emails</span>
-          {sender.subjects.slice(0, 2).map((s, i) => (
+          {sender.subjects?.slice(0, 2).map((s, i) => (
             <span key={i} className="text-xs text-gray-400 truncate max-w-[180px]">· {s}</span>
           ))}
         </div>
@@ -45,121 +42,83 @@ function SenderRow({ sender, selected, onToggle }) {
   )
 }
 
-export default function SenderHitList({ senders, onAnalyze }) {
-  const [selected, setSelected] = useState(new Set())
-
+export default function SenderHitList({ senders, selected, onToggle, onToggleAll, onAnalyze }) {
   if (!senders?.length) {
     return (
-      <div className="text-center py-12 text-gray-400 text-sm">
+      <div className="text-center py-12 text-gray-400 text-sm px-6">
         No senders found. Try scanning your inbox again.
       </div>
     )
   }
 
-  function toggleSender(email) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(email)) next.delete(email)
-      else next.add(email)
-      return next
-    })
-  }
-
-  function toggleAll(list) {
-    const emails = list.map(s => s.email)
-    const allSelected = emails.every(e => selected.has(e))
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (allSelected) emails.forEach(e => next.delete(e))
-      else emails.forEach(e => next.add(e))
-      return next
-    })
-  }
-
-  function handleAnalyze() {
-    const selectedSenders = senders.filter(s => selected.has(s.email))
-    if (selectedSenders.length) onAnalyze(selectedSenders)
-  }
-
-  // Split into newsletters (has unsubscribe) and regular
   const newsletters = senders.filter(s => s.hasUnsubscribe)
   const regular = senders.filter(s => !s.hasUnsubscribe)
+  const selectedCount = selected.length
+  const allSelected = selectedCount === senders.length
 
-  const totalSelected = selected.size
+  function toggleSection(list) {
+    const emails = list.map(s => s.email)
+    const allSectionSelected = emails.every(e => selected.includes(e))
+    emails.forEach(email => {
+      const isSelected = selected.includes(email)
+      if (allSectionSelected && isSelected) onToggle(email)
+      else if (!allSectionSelected && !isSelected) onToggle(email)
+    })
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
 
-      {/* Unsubscribe Candidates */}
-      {newsletters.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-ink" style={{ fontFamily: 'Syne, sans-serif' }}>
-                ⚡ Unsubscribe Candidates
-              </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                These senders support one-click unsubscribe. Select and analyze to create rules.
-              </p>
+        {newsletters.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-ink">⚡ Unsubscribe Candidates</h3>
+                <p className="text-xs text-gray-400 mt-0.5">These support one-click unsubscribe.</p>
+              </div>
+              <button onClick={() => toggleSection(newsletters)} className="text-xs text-gray-400 hover:text-ink transition-colors">
+                {newsletters.every(s => selected.includes(s.email)) ? 'Deselect all' : 'Select all'}
+              </button>
             </div>
-            <button
-              onClick={() => toggleAll(newsletters)}
-              className="text-xs text-gray-400 hover:text-ink transition-colors"
-            >
-              {newsletters.every(s => selected.has(s.email)) ? 'Deselect all' : 'Select all'}
-            </button>
+            <div className="space-y-2">
+              {newsletters.map(sender => (
+                <SenderRow key={sender.email} sender={sender} selected={selected.includes(sender.email)} onToggle={onToggle} />
+              ))}
+            </div>
           </div>
-          <div className="space-y-2">
-            {newsletters.map(sender => (
-              <SenderRow
-                key={sender.email}
-                sender={sender}
-                selected={selected.has(sender.email)}
-                onToggle={toggleSender}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Regular senders */}
-      {regular.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-ink" style={{ fontFamily: 'Syne, sans-serif' }}>
-              All Senders
-            </h3>
-            <button
-              onClick={() => toggleAll(regular)}
-              className="text-xs text-gray-400 hover:text-ink transition-colors"
-            >
-              {regular.every(s => selected.has(s.email)) ? 'Deselect all' : 'Select all'}
-            </button>
+        {regular.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-ink">All Senders</h3>
+              <button onClick={() => toggleSection(regular)} className="text-xs text-gray-400 hover:text-ink transition-colors">
+                {regular.every(s => selected.includes(s.email)) ? 'Deselect all' : 'Select all'}
+              </button>
+            </div>
+            <div className="space-y-2">
+              {regular.map(sender => (
+                <SenderRow key={sender.email} sender={sender} selected={selected.includes(sender.email)} onToggle={onToggle} />
+              ))}
+            </div>
           </div>
-          <div className="space-y-2">
-            {regular.map(sender => (
-              <SenderRow
-                key={sender.email}
-                sender={sender}
-                selected={selected.has(sender.email)}
-                onToggle={toggleSender}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Analyze button */}
-      <div className="sticky bottom-0 pt-4 pb-2 bg-surface-muted">
+      <div className="shrink-0 px-6 py-4 border-t border-gray-100 bg-white">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={onToggleAll} className="text-xs text-gray-400 hover:text-ink transition-colors">
+            {allSelected ? 'Deselect all' : 'Select all'}
+          </button>
+          <span className="text-xs text-gray-400">{selectedCount} of {senders.length} selected</span>
+        </div>
         <button
-          onClick={handleAnalyze}
-          disabled={totalSelected === 0}
-          className="w-full bg-assassin-red text-white font-semibold py-3 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-700 transition-colors"
-          style={{ fontFamily: 'Syne, sans-serif' }}
+          onClick={onAnalyze}
+          disabled={selectedCount === 0}
+          className="w-full bg-assassin-red text-white font-semibold py-3 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-700 transition-colors"
         >
-          {totalSelected === 0
-            ? 'Select senders to analyze'
-            : `Analyze ${totalSelected} sender${totalSelected !== 1 ? 's' : ''} →`}
+          {selectedCount === 0 ? 'Select senders to analyze' : `Analyze ${selectedCount} sender${selectedCount !== 1 ? 's' : ''} →`}
         </button>
       </div>
     </div>

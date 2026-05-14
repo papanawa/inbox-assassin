@@ -3,23 +3,26 @@
 // For senders with hasUnsubscribe=true, proposes unsubscribe_delete action.
 // For others, proposes trash, move, or mark_read based on sender patterns.
 
-const Anthropic = require('@anthropic-ai/sdk')
+import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   const { senders, existingLabels = [] } = req.body
 
-  if (!senders?.length) {
+  // Cap at 15 senders to avoid Vercel function timeout
+  const cappedSenders = senders.slice(0, 15)
+
+  if (!cappedSenders.length) {
     return res.status(400).json({ error: 'No senders provided' })
   }
 
   // Build sender descriptions for Claude
-  const senderDescriptions = senders.map(s => {
+  const senderDescriptions = cappedSenders.map(s => {
     const lines = [
       `Sender: ${s.name} <${s.email}>`,
       `Email count: ${s.count}`,
@@ -95,7 +98,7 @@ destination_label is required for move and create_and_move actions, null for all
 
     // Attach unsubscribe data to rules that need it
     const enriched = rules.map(rule => {
-      const sender = senders.find(s =>
+      const sender = cappedSenders.find(s =>
         s.email === rule.target_value ||
         s.domain === rule.target_value ||
         s.email?.endsWith(`@${rule.target_value}`)
@@ -110,7 +113,7 @@ destination_label is required for move and create_and_move actions, null for all
       return rule
     })
 
-    return res.status(200).json({ rules: enriched })
+    return res.status(200).json({ proposals: enriched })
   } catch (err) {
     console.error('Suggest error:', err)
     return res.status(500).json({ error: err.message })
