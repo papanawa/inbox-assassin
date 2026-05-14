@@ -1,76 +1,118 @@
-// POST /api/advisor/suggest
-// Claude analyzes selected senders and proposes cleanup rules
-// Accepts existing Gmail labels to avoid creating duplicates
+// api/advisor/suggest.js
+// Takes selected senders from inbox scan and asks Claude to propose cleanup rules.
+// For senders with hasUnsubscribe=true, proposes unsubscribe_delete action.
+// For others, proposes trash, move, or mark_read based on sender patterns.
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+const Anthropic = require('@anthropic-ai/sdk')
+
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
 
   const { senders, existingLabels = [] } = req.body
-  if (!senders?.length) return res.status(400).json({ error: 'No senders provided' })
 
-  const senderList = senders.map(s =>
-    `- ${s.name} <${s.email}> | ${s.count} emails | Subjects: ${s.subjects.slice(0, 2).join(' / ') || 'N/A'}`
-  ).join('\n')
+  if (!senders?.length) {
+    return res.status(400).json({ error: 'No senders provided' })
+  }
 
-  const labelList = existingLabels.length > 0
-    ? `\nEXISTING GMAIL LABELS (reuse these instead of creating new ones):\n${existingLabels.map(l => `- ${l}`).join('\n')}`
-    : ''
+  // Build sender descriptions for Claude
+  const senderDescriptions = senders.map(s => {
+    const lines = [
+      `Sender: ${s.name} <${s.email}>`,
+      `Email count: ${s.count}`,
+      `Sample subjects: ${s.subjects?.join(' | ') || 'none'}`,
+      `Supports one-click unsubscribe: ${s.hasUnsubscribe ? 'YES' : 'no'}`,
+    ]
+    return lines.join('\n')
+  }).join('\n\n')
 
-  const prompt = `You are analyzing Gmail inbox clutter. Propose smart cleanup rules for these senders.
-${labelList}
+  const labelsList = existingLabels.length
+    ? `Existing Gmail labels: ${existingLabels.join(', ')}`
+    : 'No existing Gmail labels.'
 
-SENDERS TO CLEAN:
-${senderList}
+  const systemPrompt = `You are an email cleanup assistant. You propose Gmail cleanup rules for selected senders.
+
+Available actions:
+- trash: Delete emails from this sender
+- unsubscribe_delete: Unsubscribe AND delete (only use when "Supports one-click unsubscribe: YES")
+- move: Move to an existing or new label (requires destination_label)
+- mark_read: Auto-mark as read without deleting
+- create_and_move: Create a new label and move there
+
+${labelsList}
 
 Rules:
-- "trash" = promotional/spam/marketing/newsletters
-- "create_and_move" = useful to keep but should be organized (receipts, statements, financial, medical, orders)
-- "mark_read" = low priority but worth keeping
+1. If a sender supports one-click unsubscribe, ALWAYS propose "unsubscribe_delete" action
+2. Reuse existing labels when a good match exists — do not create duplicates
+3. Be concise in reasoning (1 sentence)
+4. Return ONLY valid JSON — no markdown, no backticks, no explanation
 
-IMPORTANT: If existing labels are provided above, use them for folder names instead of creating new ones. Pick the most appropriate existing label. Only suggest a new label name if none of the existing ones fit.
-
-For financial emails: prefer existing Finance or Banking labels.
-For order/receipt emails: prefer existing Orders or Receipts labels.
-High email counts (50+) from promotional senders = trash.
-
-Respond ONLY with valid JSON array, no markdown:
+Response format (array of rule objects):
 [
   {
-    "email": "sender@domain.com",
-    "name": "Sender Name",
-    "count": 123,
-    "rule_name": "Short descriptive name",
-    "rule_type": "sender",
-    "config": { "email": "sender@domain.com" },
-    "action": "trash|create_and_move|mark_read",
-    "action_config": { "label": "Exact existing label name or new name" },
-    "reasoning": "One sentence why",
-    "description": "Plain English: what this rule does"
+    "name": "Short rule name",
+    "target_type": "sender",
+    "target_value": "email@example.com",
+    "action": "unsubscribe_delete",
+    "destination_label": null,
+    "reasoning": "One sentence why."
   }
-]`
+]
+
+target_type must be one of: sender, domain, newsletter
+If targeting a whole domain, use target_type "domain" and target_value as the domain only (e.g. "example.com")
+destination_label is required for move and create_and_move actions, null for all others.`
+
+  const userMessage = `Propose cleanup rules for these senders:\n\n${senderDescriptions}`
 
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
     })
 
-    const data = await r.json()
-    const raw = data.content?.[0]?.text ?? '[]'
-    const clean = raw.replace(/```json|```/g, '').trim()
-    const proposals = JSON.parse(clean)
-    return res.status(200).json({ proposals })
+    const text = response.content?.[0]?.text || ''
+
+    // Parse JSON — strip any accidental markdown fences
+    const cleaned = text.replace(/```json|```/g, '').trim()
+    let rules
+
+    try {
+      rules = JSON.parse(cleaned)
+    } catch (parseErr) {
+      console.error('Failed to parse Claude response:', text)
+      return res.status(200).json({ rules: [], error: 'Parse error', raw: text })
+    }
+
+    if (!Array.isArray(rules)) {
+      return res.status(200).json({ rules: [], error: 'Unexpected response shape' })
+    }
+
+    // Attach unsubscribe data to rules that need it
+    const enriched = rules.map(rule => {
+      const sender = senders.find(s =>
+        s.email === rule.target_value ||
+        s.domain === rule.target_value ||
+        s.email?.endsWith(`@${rule.target_value}`)
+      )
+      if (sender?.hasUnsubscribe && rule.action === 'unsubscribe_delete') {
+        return {
+          ...rule,
+          listUnsubscribe: sender.listUnsubscribe,
+          listUnsubscribePost: sender.listUnsubscribePost,
+        }
+      }
+      return rule
+    })
+
+    return res.status(200).json({ rules: enriched })
   } catch (err) {
     console.error('Suggest error:', err)
-    return res.status(500).json({ error: 'Analysis failed' })
+    return res.status(500).json({ error: err.message })
   }
 }
